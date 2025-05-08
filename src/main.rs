@@ -11,6 +11,7 @@ use wasabi::graphics::draw_test_pattern;
 use wasabi::graphics::fill_rect;
 use wasabi::qemu::exit_qemu;
 use wasabi::qemu::QemuExitCode;
+use wasabi::serial::SerialPort;
 use wasabi::uefi::EfiHandle;
 use wasabi::uefi::exit_from_efi_services;
 use wasabi::uefi::init_vram;
@@ -32,7 +33,8 @@ fn efi_main(image_handle: EfiHandle, efi_system_table: &EfiSystemTable) {
     //for e in vram {
     //    *e = 0xffffff;
     //}
-
+    let mut sw = SerialPort::new_for_com1();
+    writeln!(sw,"Hello via serial port").unwrap();
     let mut vram = init_vram(efi_system_table).expect("init vram failed.");
 
     let vw = vram.width();
