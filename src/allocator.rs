@@ -14,12 +14,12 @@ use core::fmt;
 use core::mem::size_of;
 use core::ops::DerefMut;
 use core::ptr::null_mut;
-use crate::serial::SerialPort;
-use core::fmt::Write;
 
-struct U8ptr(*mut u8);
+//use crate::info;
 
-/* impl U8Ptr {
+/* struct U8ptr(*mut u8);
+
+ impl U8Ptr {
     pub unsafe fn get_value(&self) -> Option<u8> {
         if self.is_null() {
             None
@@ -186,8 +186,8 @@ unsafe impl Sync for FirstFitAllocator {}
 
 unsafe impl GlobalAlloc for FirstFitAllocator {
     unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
-        let p = self.alloc_with_options(layout);
-        p
+//info!("global alloc");
+        self.alloc_with_options(layout)
     }
     unsafe fn dealloc(&self, ptr: *mut u8, _layout: Layout) {
         let mut region  = Header::from_allocated_region(ptr);
@@ -202,7 +202,7 @@ impl FirstFitAllocator {
         let mut header = self.first_header.borrow_mut();
         let mut header = header.deref_mut();
 //let mut sw = SerialPort::new_for_com1();
-//writeln!(sw, "FirstFitAllocator alloc_with_options {:?}", header).unwrap(); 
+//info!("FirstFitAllocator alloc_with_options {:?} {:?}", header, layout); 
         loop {
             match header {
                 Some(e) => match e.provide(layout.size(), layout.align()) {
@@ -213,6 +213,7 @@ impl FirstFitAllocator {
                     }
                 },
                 None => {
+//info!("FirstFitAllocator alloc_with_options null!!"); 
                     break null_mut::<u8>()
                 }
             }
@@ -227,7 +228,7 @@ impl FirstFitAllocator {
 
             self.add_free_from_descriptor(e);
         }
-//writeln!(sw, "init header by mmap {:?}", self.first_header).unwrap(); 
+//info!("init header by mmap {:?}", self.first_header);
     }
     fn add_free_from_descriptor(&self, desc: &EfiMemoryDescriptor) {
         let mut start_addr = desc.physical_start() as usize;
@@ -317,7 +318,7 @@ mod test {
             Layout::from_size_align(128, 128).unwrap(),
             Layout::from_size_align(64, 64).unwrap(),
             Layout::from_size_align(8, 8).unwrap(),
-/*            Layout::from_size_align(16, 16).unwrap(),
+            Layout::from_size_align(16, 16).unwrap(),
             Layout::from_size_align(6000, 64).unwrap(),
             Layout::from_size_align(4, 4).unwrap(),
             Layout::from_size_align(2, 2).unwrap(),
@@ -346,8 +347,7 @@ mod test {
             Layout::from_size_align(60000, 64).unwrap(),
             Layout::from_size_align(60000, 64).unwrap(),
             Layout::from_size_align(60000, 64).unwrap(),
-            Layout::from_size_align(60000, 64).unwrap(),
-*/            
+            Layout::from_size_align(60000, 64).unwrap(),           
         ];
 
 //writeln!(sw, "test allocated_object_have_no_overlap start").unwrap(); 

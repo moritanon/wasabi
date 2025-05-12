@@ -9,18 +9,23 @@ use core::writeln;
 use wasabi::graphics::Bitmap;
 use wasabi::graphics::draw_test_pattern;
 use wasabi::graphics::fill_rect;
+use wasabi::init::init_basic_runtime;
 use wasabi::qemu::exit_qemu;
 use wasabi::qemu::QemuExitCode;
-use wasabi::serial::SerialPort;
+use wasabi::println;
 use wasabi::uefi::EfiHandle;
-use wasabi::uefi::exit_from_efi_services;
 use wasabi::uefi::init_vram;
 use wasabi::uefi::EfiMemoryType;
 use wasabi::uefi::EfiSystemTable;
-use wasabi::uefi::MemoryMapHolder;
 use wasabi::uefi::VramTextWriter;
 
 use wasabi::x86::hlt;
+use wasabi::info;
+use wasabi::warn;
+use wasabi::error;
+use wasabi::x86::init_exception;
+use wasabi::x86::trigger_debug_interrupt;
+//use wasabi::print::hexdump;
 
 #[no_mangle]
 fn efi_main(image_handle: EfiHandle, efi_system_table: &EfiSystemTable) {
@@ -33,8 +38,16 @@ fn efi_main(image_handle: EfiHandle, efi_system_table: &EfiSystemTable) {
     //for e in vram {
     //    *e = 0xffffff;
     //}
-    let mut sw = SerialPort::new_for_com1();
-    writeln!(sw,"Hello via serial port").unwrap();
+    println!("Booting WasabiOS...");
+    println!("image_handle: {:#018X}", image_handle);
+    println!("efi_system_table: {:#p}", efi_system_table);
+
+    info!("HOGEEEE");
+    warn!("GUEEEEE");
+    error!("GYAAAAAAAA");
+  
+
+
     let mut vram = init_vram(efi_system_table).expect("init vram failed.");
 
     let vw = vram.width();
@@ -48,11 +61,8 @@ fn efi_main(image_handle: EfiHandle, efi_system_table: &EfiSystemTable) {
         writeln!(w, "i={i}").unwrap();
     }
 
-    let mut memory_map = MemoryMapHolder::new();
-    let status = efi_system_table
-                            .boot_services()
-                            .get_memory_map(&mut memory_map);
-    writeln!(w, "{status:?}").unwrap();
+    let memory_map = init_basic_runtime(image_handle, efi_system_table);
+
     let mut total_memory_pages = 0;
     for e in memory_map.iter() {
         if e.memory_type() != EfiMemoryType::CONVENTIONAL_MEMORY {
@@ -67,12 +77,22 @@ fn efi_main(image_handle: EfiHandle, efi_system_table: &EfiSystemTable) {
         )
         .unwrap();
 
-    exit_from_efi_services(
-        image_handle,
-        efi_system_table,
-        &mut memory_map,
-    );
     writeln!(w, "Hello, Non-UEFI world!").unwrap();
+    let cr3 = wasabi::x86::read_cr3();
+    println!("cr3 = {cr3:#p}");
+    let t = Some(unsafe{&*cr3});
+    println!("{t:?}");
+    //let t = t.and_then(|t| t.next_level(0));
+    //println!("{t:?}");
+    //let t = t.and_then(|t| t.next_level(0));
+    //println!("{t:?}");
+    //let t = t.and_then(|t| t.next_level(0));
+    //println!("{t:?}");
+    
+    let (_gdt, _idt) = init_exception();
+    info!("Exception initialized.");
+    trigger_debug_interrupt();
+
     loop {
         hlt()
     }
