@@ -10,6 +10,7 @@ use wasabi::graphics::Bitmap;
 use wasabi::graphics::draw_test_pattern;
 use wasabi::graphics::fill_rect;
 use wasabi::init::init_basic_runtime;
+use wasabi::init::init_paging;
 use wasabi::qemu::exit_qemu;
 use wasabi::qemu::QemuExitCode;
 use wasabi::println;
@@ -18,11 +19,17 @@ use wasabi::uefi::init_vram;
 use wasabi::uefi::EfiMemoryType;
 use wasabi::uefi::EfiSystemTable;
 use wasabi::uefi::VramTextWriter;
+use wasabi::uefi::locate_loaded_image_protocol;
 
 use wasabi::x86::hlt;
+use wasabi::x86::read_cr3;
+use wasabi::x86::PageAttr;
+use wasabi::x86::flush_tlb;
 use wasabi::info;
 use wasabi::warn;
 use wasabi::error;
+use wasabi::executor::Task;
+use wasabi::executor::Executor;
 use wasabi::x86::init_exception;
 use wasabi::x86::trigger_debug_interrupt;
 //use wasabi::print::hexdump;
@@ -41,6 +48,12 @@ fn efi_main(image_handle: EfiHandle, efi_system_table: &EfiSystemTable) {
     println!("Booting WasabiOS...");
     println!("image_handle: {:#018X}", image_handle);
     println!("efi_system_table: {:#p}", efi_system_table);
+
+    let loaded_image_protocol = 
+        locate_loaded_image_protocol(image_handle, efi_system_table)
+        .expect("Failed to get LoadedImageProtocol.");
+    println!("image_base: {:#018X}", loaded_image_protocol.image_base);
+    println!("image_size: {:#018X}", loaded_image_protocol.image_size);
 
     info!("HOGEEEE");
     warn!("GUEEEEE");
@@ -91,7 +104,56 @@ fn efi_main(image_handle: EfiHandle, efi_system_table: &EfiSystemTable) {
     
     let (_gdt, _idt) = init_exception();
     info!("Exception initialized.");
-    trigger_debug_interrupt();
+    //trigger_debug_interrupt();
+    //info!("Execution continued.");
+    init_paging(&memory_map);
+    info!("Now we are using our own Page Tables!");
+
+    /* info!("reading from memory address 0... (first)");
+    #[allow(clippy::zero_ptr)]
+    #[allow(deref_nullptr)]
+    let value_at_zero = unsafe { *(0 as *const u8) };
+    let vref : &u8 = &value_at_zero;
+    info!("value_at_zero = {value_at_zero}");
+    info!("ref value_at_zero = {vref:?}"); */
+
+    let page_table = read_cr3();
+    unsafe {
+        (*page_table)
+            .create_mapping(0, 4096, 0, PageAttr::NotPresend)
+            .expect("Failed to unmap page 0.");
+    }
+    flush_tlb();
+    /* info!("reading from memory address 0... (again)");
+    #[allow(clippy::zero_ptr)]
+    #[allow(deref_nullptr)]
+    let value_at_zero = unsafe { *(0 as *const u8) };
+    info!("value_at_zero = {value_at_zero} again"); 
+
+    let result = block_on(async {
+        info!("Hello from async world!");
+        Ok(())
+    });
+    info!("block_on completed! result = {result:?}");
+    */
+
+    let task1= Task::new(async {
+        for i in 100..103 {
+            info!("{i}");
+        }
+        Ok(())
+    });
+
+    let task2 = Task::new(async {
+        for i in 200..203 {
+            info!("{i}");
+        }
+        Ok(())
+    });
+    let mut executor = Executor::new();
+    executor.enqueue(task1);
+    executor.enqueue(task2);
+    Executor::run(executor);
 
     loop {
         hlt()

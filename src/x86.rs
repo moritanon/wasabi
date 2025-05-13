@@ -11,6 +11,7 @@ use core::marker::PhantomData;
 use core::mem::offset_of;
 use core::mem::size_of;
 use core::mem::size_of_val;
+use core::mem::MaybeUninit;
 use core::pin::Pin;
 
 pub fn hlt() {
@@ -38,6 +39,21 @@ pub fn write_io_port_u8(port: u16, data: u8) {
         asm!("out dx, al",
              in("al") data,
              in("dx") port)
+    }
+}
+
+/// # Safety
+/// writing to CR3 can causes any exceptions so it is 
+/// programer's responsibility to setup correct page tables.
+#[no_mangle]
+pub unsafe fn write_cr3(table :*const PML4) {
+    asm!( "mov cr3, rax",
+          in("rax") table)
+}
+
+pub fn flush_tlb() {
+    unsafe {
+        write_cr3(read_cr3());
     }
 }
 
@@ -114,6 +130,43 @@ impl<const LEVEL: usize, const SHIFT: usize, NEXT> Entry<LEVEL, SHIFT, NEXT> {
             Err("Page Not Found")
         }
     }
+    fn table_mut(&mut self) -> Result<&mut NEXT> {
+        if self.is_present() {
+            Ok(unsafe { &mut *((self.value & !ATTR_MASK) as *mut NEXT)})
+        } else {
+            Err("Page Not Found")
+        }
+    }
+
+    fn set_page(&mut self, phys: u64, attr: PageAttr) -> Result<()> {
+        if phys & ATTR_MASK != 0 {
+            Err("phys is not aligned")
+        } else {
+            self.value = phys | attr as u64;
+            Ok(())
+        }
+    }
+
+    fn populate(&mut self) -> Result<&mut Self> {
+        if self.is_present() {
+            Err("Page is already populate.")
+        } else {
+            let next: Box<NEXT> =
+                Box::new(unsafe {
+                    MaybeUninit::zeroed().assume_init() 
+                });
+            self.value = 
+                Box::into_raw(next) as u64 | PageAttr::ReadWriteKernel as u64;
+            Ok(self)
+        }
+    }
+    fn ensure_populated(&mut self) -> Result<&mut Self> {
+        if self.is_present() {
+            Ok(self)
+        } else {
+            self.populate()
+        }
+    }
 }
 
 impl<const LEVEL:usize, const SHIFT: usize, NEXT> fmt::Display
@@ -154,6 +207,10 @@ impl <const LEVEL:usize, const SHIFT: usize, NEXT: core::fmt::Debug>
     pub fn next_level(&self, index: usize) -> Option<&NEXT> {
         self.entry.get(index).and_then(|e| e.table().ok())
     }
+
+    pub fn calc_index(&self, addr: u64) -> usize {
+        ((addr >> SHIFT) & 0b1_1111_1111) as usize
+    }
 }
 impl<const LEVEL: usize, const SHIFT: usize, NEXT: fmt::Debug> fmt::Debug
     for Table<LEVEL, SHIFT, NEXT>
@@ -168,6 +225,46 @@ pub type PD = Table<2, 21, PT>;
 pub type PDPT = Table<3, 30, PD>;
 pub type PML4 = Table<4, 39, PDPT>;
 
+impl PML4 {
+    pub fn new() -> Box<Self> {
+        Box::new(Self::default())
+    }
+
+    fn default() -> Self {
+        // This is safe since entries filled with 0 is valid.
+        unsafe { MaybeUninit::zeroed().assume_init()}
+    }
+
+    pub fn create_mapping(
+        &mut self,
+        virt_start: u64,
+        virt_end: u64,
+        phys: u64,
+        attr: PageAttr,
+    ) -> Result<()> {
+        if virt_start & ATTR_MASK != 0 {
+            return Err("Invalid virt_start");
+        }
+        if virt_end & ATTR_MASK != 0 {
+            return Err("Invalid virt_end");
+        }
+        if phys & ATTR_MASK != 0 {
+            return Err("Invalid phys");
+        }
+        for addr in (virt_start..virt_end).step_by(PAGE_SIZE) {
+            let index = self.calc_index(addr);
+            let table = self.entry[index].ensure_populated()?.table_mut()?;
+            let index = table.calc_index(addr);
+            let table = table.entry[index].ensure_populated()?.table_mut()?;
+            let index = table.calc_index(addr);
+            let table = table.entry[index].ensure_populated()?.table_mut()?;
+            let index = table.calc_index(addr);
+            let pte = &mut table.entry[index];
+            pte.set_page(phys + addr - virt_start, attr)?;
+        }
+        Ok(())
+    }
+}
 /// # Safety
 ///  Anything can happen if th given selector is invalid;
 pub unsafe fn write_es(selector: u16) {
@@ -458,6 +555,7 @@ extern "sysv64" fn inthandler(info: &InterruptInfo, index: usize) {
     match index {
         3 => {
             error!("Breakpoint!");
+            return;
         }
         6 => {
             error!("Invalid Opcode");
@@ -628,7 +726,7 @@ impl Idt {
             limit,
             base : entries.as_ptr(),
         };
-        info!("Loading IDT: {params:?}");
+        //info!("Loading IDT: {params:?}");
         // SAFETY: This is safe since it loads a valid IDT that is constructed
         // in the code just above.
         unsafe {
@@ -659,24 +757,24 @@ impl TaskStateSegment64 {
     }
     unsafe fn alloc_interrupt_stack() -> u64 {
         const HANDLE_STACK_SIZE: usize = 64 * 1024;
-info!("alloc_interrupt_stack start...");
+//info!("alloc_interrupt_stack start...");
         let stack = Box::new([0u8; HANDLE_STACK_SIZE]);
-info!("alloc_interrupt_stack stack?");
+//info!("alloc_interrupt_stack stack?");
         let rsp = unsafe { stack.as_ptr().add(HANDLE_STACK_SIZE) as u64 };
-info!("alloc_interrupt_stack rsp? {:?}", rsp);
+//info!("alloc_interrupt_stack rsp? {:?}", rsp);
         core::mem::forget(stack);
         // now, no one except us own the regin since it is forgotten by the
         // allocator ;)
         rsp
     }
     pub fn new() -> Self {
-info!("TaskStateSegment64::new()!");
+//info!("TaskStateSegment64::new()!");
         let rsp0 = unsafe { Self::alloc_interrupt_stack() };
         let mut ist = [0u64;8];
         for ist in ist[1..=7].iter_mut() {
             *ist = unsafe { Self::alloc_interrupt_stack() };
         }
-info!("TSS64 now create...");
+//info!("TSS64 now create...");
         let tss64 = TaskStateSegment64Inner {
             _reserved0:0,
             _rsp: [rsp0, 0, 0],
@@ -687,7 +785,7 @@ info!("TSS64 now create...");
         let this = Self {
             inner: Box::pin(tss64),
         };
-        info!("TSS64 created @ {:#X}", this.phys_addr());
+        //info!("TSS64 created @ {:#X}", this.phys_addr());
         this
     }
 }
@@ -701,14 +799,14 @@ impl Drop for TaskStateSegment64 {
 pub fn init_exception() -> (GdtWrapper, Idt) {
     let gdt = GdtWrapper::default();
     gdt.load();
-info!("gdt load ok...");
+//info!("gdt load ok...");
     unsafe {
         write_cs(KERNEL_CS);
-info!("cs.. ok..");        
+//info!("cs.. ok..");        
         write_ss(KERNEL_DS);
-info!("ss.. ok..");        
+//info!("ss.. ok..");        
         write_es(KERNEL_DS);
-info!("es.. ok..");        
+//info!("es.. ok..");        
         write_ds(KERNEL_DS);
         write_fs(KERNEL_DS);
         write_gs(KERNEL_DS);
@@ -787,7 +885,7 @@ impl GdtWrapper {
 impl Default for GdtWrapper {
     fn default() -> Self {
         let tss64: TaskStateSegment64 = TaskStateSegment64::new();
-info!("TaskStateSegment64::new() ok...");
+//info!("TaskStateSegment64::new() ok...");
         let gdt = Gdt {
             null_segment: GdtSegmentDescriptor::null(),
             kernel_code_segment: GdtSegmentDescriptor::new(GdtAttr::KernelCode),
@@ -796,7 +894,7 @@ info!("TaskStateSegment64::new() ok...");
                 tss64.phys_addr(),
             ),
         };
-info!("gdt create ok...");
+//info!("gdt create ok...");
         let gdt = Box::pin(gdt);
         GdtWrapper { inner: gdt, tss64: tss64 }
     }
@@ -848,3 +946,4 @@ const _:() = assert!(size_of::<TaskStateSegment64Descriptor>() == 16);
 pub fn trigger_debug_interrupt() {
     unsafe { asm!("int 3") }
 }
+
