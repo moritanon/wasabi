@@ -5,6 +5,7 @@
 use core::fmt::Write;
 use core::panic::PanicInfo;
 use core::writeln;
+use core::time::Duration;
 
 use wasabi::graphics::Bitmap;
 use wasabi::graphics::draw_test_pattern;
@@ -21,17 +22,20 @@ use wasabi::uefi::EfiSystemTable;
 use wasabi::uefi::VramTextWriter;
 use wasabi::uefi::locate_loaded_image_protocol;
 
-use wasabi::x86::hlt;
 use wasabi::x86::read_cr3;
 use wasabi::x86::PageAttr;
 use wasabi::x86::flush_tlb;
 use wasabi::info;
 use wasabi::warn;
 use wasabi::error;
+use wasabi::hpet::Hpet;
 use wasabi::executor::Task;
 use wasabi::executor::Executor;
 use wasabi::x86::init_exception;
-use wasabi::x86::trigger_debug_interrupt;
+use wasabi::hpet::global_timestamp;
+use wasabi::hpet::set_global_hpet;
+use wasabi::executor::TimeoutFuture;
+//use wasabi::x86::trigger_debug_interrupt;
 //use wasabi::print::hexdump;
 
 #[no_mangle]
@@ -73,6 +77,7 @@ fn efi_main(image_handle: EfiHandle, efi_system_table: &EfiSystemTable) {
     for i in 0..4{
         writeln!(w, "i={i}").unwrap();
     }
+    let acpi = efi_system_table.acpi_table().expect("ACPT table not found");
 
     let memory_map = init_basic_runtime(image_handle, efi_system_table);
 
@@ -124,6 +129,15 @@ fn efi_main(image_handle: EfiHandle, efi_system_table: &EfiSystemTable) {
             .expect("Failed to unmap page 0.");
     }
     flush_tlb();
+
+    let hpet = acpi.hpet().expect("Filed to get HPET from ACPI");
+    let hpet = hpet
+        .base_address()
+        .expect("Failed to get HPET base address");
+    //info!("HPET is at {hpet:#018X}");
+    let hpet = Hpet::new(hpet);
+    set_global_hpet(hpet);
+    let t0 = global_timestamp();
     /* info!("reading from memory address 0... (again)");
     #[allow(clippy::zero_ptr)]
     #[allow(deref_nullptr)]
@@ -137,16 +151,19 @@ fn efi_main(image_handle: EfiHandle, efi_system_table: &EfiSystemTable) {
     info!("block_on completed! result = {result:?}");
     */
 
-    let task1= Task::new(async {
+    let task1= Task::new(async move {
         for i in 100..103 {
-            info!("{i}");
+            info!("{i} hpet.main_counter = {:?}", global_timestamp() - t0);
+            //yield_execution().await;
+            TimeoutFuture::new(Duration::from_secs(1)).await;
         }
         Ok(())
     });
 
-    let task2 = Task::new(async {
+    let task2 = Task::new(async move {
         for i in 200..203 {
-            info!("{i}");
+            info!("{i} hpet.main_counter = {:?}", global_timestamp() - t0);
+            TimeoutFuture::new(Duration::from_secs(2)).await;
         }
         Ok(())
     });
@@ -155,9 +172,6 @@ fn efi_main(image_handle: EfiHandle, efi_system_table: &EfiSystemTable) {
     executor.enqueue(task2);
     Executor::run(executor);
 
-    loop {
-        hlt()
-    }
 }
 
 

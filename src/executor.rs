@@ -3,6 +3,7 @@ extern crate alloc;
 use crate::result::Result;
 use crate::x86::busy_loop_hint;
 use crate::info;
+use crate::hpet::global_timestamp;
 use alloc::boxed::Box;
 use alloc::collections::VecDeque;
 use core::fmt::Debug;
@@ -10,11 +11,15 @@ use core::future::Future;
 use core::panic::Location;
 use core::pin::Pin;
 use core::ptr::null;
+use core::sync::atomic::AtomicBool;
 use core::task::Context;
 use core::task::Poll;
 use core::task::RawWaker;
 use core::task::RawWakerVTable;
 use core::task::Waker;
+//use core::cmp::Ordering;
+use core::sync::atomic::Ordering;
+use core::time::Duration;
 
 pub struct Task<T> {
     future: Pin<Box<dyn Future<Output = Result<T>>>>,
@@ -41,6 +46,47 @@ impl<T> Debug for Task<T> {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         write!(f, "Task({}:{})", self.created_at_file, self.created_at_line)
     }
+}
+
+#[derive(Default)]
+pub struct Yield {
+    polled: AtomicBool,
+}
+impl Future for Yield {
+    type Output = ();
+    fn poll(self: Pin<&mut Self>, _: &mut Context) -> Poll<()> {
+        if self.polled.fetch_or(true, Ordering::SeqCst) {
+            Poll::Ready(())
+        } else {
+            Poll::Pending
+        }
+    }
+}
+
+pub struct TimeoutFuture {
+    time_out: Duration,
+}
+impl TimeoutFuture {
+    pub fn new(duration: Duration) -> Self {
+        Self {
+            time_out: global_timestamp() + duration,
+        }
+    }
+}
+
+impl Future for TimeoutFuture {
+    type Output = ();
+    fn poll(self: Pin<&mut Self>, _: &mut Context) -> Poll<()> {
+        if self.time_out < global_timestamp() {
+            Poll::Ready(())
+        } else {
+            Poll::Pending
+        }
+    }
+}
+
+pub async fn yield_execution() {
+    Yield::default().await
 }
 
 fn no_op_raw_waker() ->RawWaker {

@@ -1,11 +1,18 @@
 #![no_std]
 #![feature(offset_of)]
 #![feature(custom_test_frameworks)]
+#![feature(sync_unsafe_cell)]
+#![feature(const_caller_location)]
+#![feature(const_location_fields)]
 #![test_runner(crate::test_runner::test_runner)]
 #![reexport_test_harness_main = "run_unit_tests"]
 #![no_main]
+
+pub mod acpi;
 pub mod allocator;
 pub mod graphics;
+pub mod mutex;
+pub mod hpet;
 pub mod init;
 pub mod executor;
 pub mod serial;
