@@ -15,7 +15,7 @@ use core::mem::size_of;
 use core::ops::DerefMut;
 use core::ptr::null_mut;
 
-//use crate::info;
+use crate::info;
 
 /* struct U8ptr(*mut u8);
 
@@ -257,6 +257,19 @@ impl FirstFitAllocator {
         // since all the regions written in memory maps are not contiguous
         // so that the can't be merged anyway 
     }
+}
+
+pub fn init_allocator(memory_map: &MemoryMapHolder) {
+    let mut total_memory_pages = 0;
+    for e in memory_map.iter() {
+        if e.memory_type() != EfiMemoryType::CONVENTIONAL_MEMORY {
+            continue;
+        }
+        total_memory_pages += e.number_of_page();
+        info!("{e:?}");
+    }
+    let total_memory_size_mib = total_memory_pages * 4096 / 1024 /1024;
+    info!("Total: {total_memory_pages} pages = {total_memory_size_mib}MiB");
 }
 
 #[cfg(test)]

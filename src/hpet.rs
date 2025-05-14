@@ -2,6 +2,7 @@ use core::mem::size_of;
 use core::ptr::read_volatile;
 use core::ptr::write_volatile;
 use core::time::Duration;
+use crate::acpi::AcpiRsdpStruct;
 use crate::mutex::Mutex;
 
 const TIMER_CONFIG_LEVEL_TRIGGER: u64 = 1 << 1;
@@ -96,4 +97,14 @@ pub fn global_timestamp() -> Duration {
     } else {
         Duration::ZERO
     }
+}
+
+pub fn init_hpet(acpi: &AcpiRsdpStruct) {
+    let hpet = acpi.hpet().expect("Filed to get HPET from ACPI");
+    let hpet = hpet
+        .base_address()
+        .expect("Failed to get HPET base address");
+    //info!("HPET is at {hpet:#018X}");
+    let hpet = Hpet::new(hpet);
+    set_global_hpet(hpet);
 }

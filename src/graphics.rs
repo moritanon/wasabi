@@ -1,6 +1,6 @@
 use crate::result::Result;
 use core::cmp::min;
-
+use core::fmt;
 
 pub fn draw_test_pattern<T: Bitmap>(buf: &mut T) {
     let w = 128;
@@ -202,4 +202,34 @@ fn draw_line<T: Bitmap> (
         }
     }
     Ok(())
+}
+
+pub struct BitmapTextWriter<T> {
+    buf: T,
+    cursor_x: i64,
+    cursor_y: i64,
+}
+impl<T: Bitmap> BitmapTextWriter<T> {
+    pub fn new(buf: T) -> Self {
+        Self {
+            buf,
+            cursor_x: 0,
+            cursor_y: 0,
+        }
+    }
+}
+
+impl<T: Bitmap> fmt::Write for BitmapTextWriter<T> {
+    fn write_str(&mut self, s: &str) -> fmt::Result {
+        for c in s.chars() {
+            if c == '\n' {
+                self.cursor_y += 16;
+                self.cursor_x = 0;
+                continue;
+            }
+            draw_font_fg(&mut self.buf, self.cursor_x, self.cursor_y, 0xffffff, c);
+            self.cursor_x += 8;
+        }
+        Ok(())
+    }
 }
