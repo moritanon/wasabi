@@ -12,9 +12,12 @@ mkdir -p log
 /mnt/c/Program\ Files/qemu/qemu-system-x86_64.exe  \
   -m 4G \
   -bios third_party/ovmf/RELEASEX64_OVMF.fd \
+  -machine q35 \
+  -monitor telnet:0.0.0.0:2345,server,nowait,logfile=log/qemu_monitor.txt \
   -drive format=raw,file=fat:rw:mnt \
   -chardev stdio,id=char_com1,mux=on,logfile=log/com1.txt \
   -serial chardev:char_com1 \
+  -device qemu-xhci \
   -device isa-debug-exit,iobase=0xf4,iosize=0x01
 RETCODE=$?
 set -e

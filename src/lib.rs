@@ -4,6 +4,7 @@
 #![feature(sync_unsafe_cell)]
 #![feature(const_caller_location)]
 #![feature(const_location_fields)]
+#![feature(option_get_or_insert_default)]
 #![test_runner(crate::test_runner::test_runner)]
 #![reexport_test_harness_main = "run_unit_tests"]
 #![no_main]
@@ -13,6 +14,7 @@ pub mod allocator;
 pub mod graphics;
 pub mod mutex;
 pub mod hpet;
+pub mod pci;
 pub mod init;
 pub mod executor;
 pub mod serial;
@@ -21,6 +23,7 @@ pub mod qemu;
 pub mod result;
 pub mod uefi;
 pub mod x86;
+pub mod xhci;
 
 #[cfg(test)]
 pub mod test_runner;

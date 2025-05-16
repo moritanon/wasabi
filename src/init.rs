@@ -1,5 +1,6 @@
 extern crate alloc;
 
+use crate::acpi::AcpiRsdpStruct;
 use crate::allocator::ALLOCATOR;
 use crate::uefi::exit_from_efi_services;
 use crate::uefi::EfiHandle;
@@ -7,6 +8,7 @@ use crate::uefi::EfiSystemTable;
 use crate::uefi::EfiMemoryType::*;
 use crate::uefi::MemoryMapHolder;
 use crate::uefi::VramBufferInfo;
+use crate::pci::Pci;
 use crate::x86::write_cr3;
 use crate::x86::PageAttr;
 use crate::x86::PAGE_SIZE;
@@ -17,6 +19,8 @@ use crate::graphics::fill_rect;
 
 use alloc::boxed::Box;
 use core::cmp::max;
+
+use crate::info;
 
 pub fn init_basic_runtime (
     image_handle: EfiHandle,
@@ -69,4 +73,16 @@ pub fn init_display(vram: &mut VramBufferInfo) {
     fill_rect(vram, 0x000000, 0, 0, vw, vh).expect("fill rect failed");
 
     draw_test_pattern(vram);
+}
+
+pub fn init_pci(acpi: &AcpiRsdpStruct) {
+    if let Some(mcfg) = acpi.mcfg() {
+        for i in 0..mcfg.num_of_entries() {
+            if let Some(e) = mcfg.entry(i) {
+                info!("{}", e)
+            }
+        }
+        let pci = Pci::new(mcfg);
+        pci.prove_devices();
+    }   
 }
