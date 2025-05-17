@@ -1,4 +1,6 @@
 use crate::info;
+use crate::result::Result;
+use crate::pci::Pci;
 use crate::pci::BusDeviceFunction;
 use crate::pci::VendorDeviceId;
 
@@ -21,7 +23,13 @@ impl PciXhciDriver {
         ];
         VDI_LIST.contains(&vp)
     }
-    pub fn attach(bdf: BusDeviceFunction) {
-        info!("Xhci found ad {bdf:?}")
+    pub fn attach(pci: &Pci, bdf: BusDeviceFunction) -> Result<()> {
+        info!("Xhci found at: {bdf:?}");
+        pci.disable_interrupt(bdf)?;
+        pci.enable_bus_master(bdf)?;
+        let bar0 = pci.try_bar0_mem64(bdf)?;
+        bar0.disable_cache();
+        info!("xhci: {bar0:?}");
+        Err("wip")
     }
 }
