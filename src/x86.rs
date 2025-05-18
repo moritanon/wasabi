@@ -672,9 +672,9 @@ impl IdtDescriptor {
             offset_low: handler_addr as u16,
             offset_mid: (handler_addr >> 16) as u16,
             offset_high: (handler_addr >> 32) as u32,
-            segment_selector: segment_selector,
-            ist_index: ist_index,
-            attr: attr,
+            segment_selector,
+            ist_index,
+            attr,
             _reserved:0 
         }
     }
@@ -806,7 +806,7 @@ impl TaskStateSegment64 {
         let this = Self {
             inner: Box::pin(tss64),
         };
-        //info!("TSS64 created @ {:#X}", this.phys_addr());
+        info!("TSS64 created @ {:#X}", this.phys_addr());
         this
     }
 }
@@ -917,7 +917,7 @@ impl Default for GdtWrapper {
         };
 //info!("gdt create ok...");
         let gdt = Box::pin(gdt);
-        GdtWrapper { inner: gdt, tss64: tss64 }
+        GdtWrapper { inner: gdt, tss64 }
     }
 }
 

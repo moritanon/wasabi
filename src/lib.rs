@@ -12,16 +12,19 @@
 pub mod acpi;
 pub mod allocator;
 pub mod graphics;
+pub mod bits;
 pub mod mutex;
 pub mod hpet;
 pub mod pci;
 pub mod init;
+pub mod mmio;
 pub mod executor;
 pub mod serial;
 pub mod print;
 pub mod qemu;
 pub mod result;
 pub mod uefi;
+pub mod volatile;
 pub mod x86;
 pub mod xhci;
 
